@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { supabase } from '../lib/supabase'; // Attention au chemin vers ton fichier supabase !
+import { supabase } from '../lib/supabase';
 
 export default function Multijoueur() {
   const [user, setUser] = useState<any>(null);
@@ -11,14 +11,11 @@ export default function Multijoueur() {
   const [game, setGame] = useState<any>(null);
   const [myChoice, setMyChoice] = useState<string | null>(null);
 
-  // useRef permet de garder une trace des valeurs dans les fonctions Realtime 
-  // sans causer de bugs d'affichage
   const gameRef = useRef(game);
   const userPointsRef = useRef(userPoints);
   useEffect(() => { gameRef.current = game; }, [game]);
   useEffect(() => { userPointsRef.current = userPoints; }, [userPoints]);
 
-  // 1. Initialisation du joueur
   useEffect(() => {
     async function checkUser() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -33,50 +30,40 @@ export default function Multijoueur() {
     checkUser();
   }, []);
 
-  // 2. L'Abonnement Temps Réel (La magie WebSockets)
   useEffect(() => {
     if (!game) return;
 
-    // On écoute uniquement les changements de NOTRE partie
     const sub = supabase.channel(`rps_room_${game.id}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rps_games', filter: `id=eq.${game.id}` }, (payload) => {
         const oldGame = gameRef.current;
         const newGame = payload.new;
 
-        // SCÉNARIO A : Quelqu'un rejoint ma partie ! On prélève l'argent du Joueur 1.
         if (oldGame.status === 'waiting' && newGame.status === 'playing' && newGame.player1_id === user?.id) {
             const newPts = userPointsRef.current - newGame.final_bet;
             supabase.from('profiles').update({ points: newPts }).eq('id', user.id).then(() => setUserPoints(newPts));
         }
 
-        // SCÉNARIO B : Les deux joueurs ont choisi leur arme
         if (newGame.choice_p1 && newGame.choice_p2 && newGame.status === 'playing') {
-            // Seul le Joueur 1 fait les calculs pour éviter de modifier la base de données en double
             if (newGame.player1_id === user?.id) {
                 setTimeout(async () => {
                     const winner = determineWinner(newGame.choice_p1, newGame.choice_p2);
-                    
                     if (winner === 'tie') {
-                        // Égalité : On efface les choix pour rejouer
                         await supabase.from('rps_games').update({ choice_p1: null, choice_p2: null }).eq('id', newGame.id);
                     } else {
-                        // Fin de partie : On désigne le vainqueur
                         const winnerId = winner === 'p1' ? newGame.player1_id : newGame.player2_id;
                         await supabase.from('rps_games').update({ status: 'finished', winner_id: winnerId }).eq('id', newGame.id);
                     }
-                }, 3000); // Pause de 3 secondes pour afficher l'animation de combat !
+                }, 3000); 
             }
         }
 
-        // SCÉNARIO C : La partie est finie, distribution des gains
         if (oldGame.status !== 'finished' && newGame.status === 'finished' && newGame.winner_id === user?.id) {
             const newPts = userPointsRef.current + (newGame.final_bet * 2);
             supabase.from('profiles').update({ points: newPts }).eq('id', user.id).then(() => setUserPoints(newPts));
         }
 
-        // SCÉNARIO D : Égalité relancée (les choix ont été effacés)
         if (oldGame.choice_p1 && !newGame.choice_p1) {
-            setMyChoice(null); // On permet au joueur de recliquer
+            setMyChoice(null); 
         }
 
         setGame(newGame);
@@ -85,44 +72,37 @@ export default function Multijoueur() {
     return () => { supabase.removeChannel(sub); };
   }, [game?.id, user?.id]);
 
-  // L'algorithme mathématique de Pierre-Feuille-Ciseaux
   const determineWinner = (c1: string, c2: string) => {
       if (c1 === c2) return 'tie';
       if ((c1 === 'pierre' && c2 === 'ciseaux') || (c1 === 'feuille' && c2 === 'pierre') || (c1 === 'ciseaux' && c2 === 'feuille')) return 'p1';
       return 'p2';
   };
 
-  // 3. Chercher un adversaire (Matchmaking)
   const handlePlay = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     const bet = parseInt(betInput);
     if (bet <= 0 || bet > userPoints) return alert("Mise invalide ou fonds insuffisants !");
 
-    // Y a-t-il une partie en attente créée par un AUTRE joueur ?
     const { data: waitingGames } = await supabase.from('rps_games').select('*').eq('status', 'waiting').neq('player1_id', user.id).limit(1);
 
     if (waitingGames && waitingGames.length > 0) {
       const match = waitingGames[0];
-      // Tirage au sort de la mise finale ! (50% de chance pour la tienne, 50% pour la sienne)
       const finalBet = Math.random() < 0.5 ? match.bet_p1 : bet;
       
       if (userPoints < finalBet) return alert(`L'adversaire a misé ${match.bet_p1} et tu n'as pas assez pour couvrir la mise finale !`);
 
-      // On rejoint la partie !
       const { data: updatedMatch, error } = await supabase.from('rps_games').update({
         player2_id: user.id, bet_p2: bet, final_bet: finalBet, status: 'playing'
       }).eq('id', match.id).select().single();
 
       if (!error) {
         setGame(updatedMatch);
-        // Le Joueur 2 (Toi) prélève ses pièces ici
         const newPts = userPoints - finalBet;
         await supabase.from('profiles').update({ points: newPts }).eq('id', user.id);
         setUserPoints(newPts);
       }
     } else {
-      // Aucune partie trouvée : On crée notre salle d'attente
       const { data: newMatch, error } = await supabase.from('rps_games').insert([{
         player1_id: user.id, bet_p1: bet
       }]).select().single();
@@ -131,9 +111,23 @@ export default function Multijoueur() {
     }
   };
 
-  // 4. Faire son choix de combat
+  // NOUVELLE FONCTION : Annuler la recherche
+  const cancelMatchmaking = async () => {
+    if (!game || !user) return;
+    
+    // On supprime la partie en attente de la base de données pour nettoyer
+    const { error } = await supabase.from('rps_games').delete().eq('id', game.id);
+    
+    if (!error) {
+      // On réinitialise l'affichage pour revenir à l'écran de mise
+      setGame(null);
+    } else {
+      alert("Erreur lors de l'annulation. La partie a peut-être déjà commencé !");
+    }
+  };
+
   const makeChoice = async (choice: string) => {
-      if (myChoice) return; // Impossible de changer d'avis
+      if (myChoice) return; 
       setMyChoice(choice);
       const isPlayer1 = game.player1_id === user.id;
       const updateField = isPlayer1 ? { choice_p1: choice } : { choice_p2: choice };
@@ -150,22 +144,22 @@ export default function Multijoueur() {
   return (
     <div className="min-h-screen bg-slate-900 text-white font-sans flex flex-col selection:bg-pink-500">
       <header className="bg-slate-800/80 backdrop-blur-md shadow-lg border-b border-slate-700 p-4 sticky top-0 z-20 flex justify-between items-center">
-        <Link href="/" className="text-2xl font-black text-indigo-400 hover:text-indigo-300 transition-colors">⬅️ Retour</Link>
+        <Link href="/" className="text-xl sm:text-2xl font-black text-indigo-400 hover:text-indigo-300 transition-colors">⬅️ Retour</Link>
         <div className="bg-yellow-400/20 border border-yellow-500 text-yellow-400 px-4 py-2 rounded-2xl font-black flex items-center gap-2">
           🪙 {userPoints}
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto p-6 mt-8 flex-grow w-full flex flex-col items-center">
-        <div className="text-center mb-12">
-            <span className="text-6xl mb-4 block">⚔️</span>
-            <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-indigo-500 mb-2">Pierre Feuille Ciseaux</h1>
+      <main className="max-w-2xl mx-auto p-4 sm:p-6 mt-8 flex-grow w-full flex flex-col items-center">
+        <div className="text-center mb-8 sm:mb-12">
+            <span className="text-5xl sm:text-6xl mb-4 block">⚔️</span>
+            <h1 className="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-indigo-500 mb-2">Pierre Feuille Ciseaux</h1>
             <p className="text-slate-400 font-bold">1 VS 1 en Temps Réel</p>
         </div>
 
         {/* ÉCRAN 1 : RECHERCHE DE MATCH */}
         {!game && (
-            <div className="bg-slate-800 p-8 rounded-[2rem] border-2 border-slate-700 w-full shadow-2xl text-center">
+            <div className="bg-slate-800 p-6 sm:p-8 rounded-[2rem] border-2 border-slate-700 w-full shadow-2xl text-center">
                 <h2 className="text-2xl font-black mb-6">Prêt à combattre ?</h2>
                 <form onSubmit={handlePlay} className="space-y-6">
                     <div>
@@ -182,10 +176,18 @@ export default function Multijoueur() {
 
         {/* ÉCRAN 2 : EN ATTENTE D'UN JOUEUR */}
         {game?.status === 'waiting' && (
-            <div className="bg-slate-800 p-12 rounded-[2rem] border-2 border-slate-700 w-full shadow-2xl text-center animate-pulse">
-                <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-                <h2 className="text-2xl font-black text-indigo-400 mb-2">Recherche en cours...</h2>
-                <p className="text-slate-400 font-bold">En attente d'un adversaire digne de ce nom.</p>
+            <div className="bg-slate-800 p-8 sm:p-12 rounded-[2rem] border-2 border-slate-700 w-full shadow-2xl text-center flex flex-col items-center">
+                <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-6"></div>
+                <h2 className="text-2xl font-black text-indigo-400 mb-2 animate-pulse">Recherche en cours...</h2>
+                <p className="text-slate-400 font-bold mb-10">En attente d'un adversaire digne de ce nom.</p>
+                
+                {/* NOUVEAU BOUTON D'ANNULATION */}
+                <button 
+                  onClick={cancelMatchmaking}
+                  className="bg-red-900/40 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/50 font-bold py-3 px-6 rounded-xl transition-all duration-300"
+                >
+                  ❌ Annuler la recherche
+                </button>
             </div>
         )}
 
@@ -198,13 +200,12 @@ export default function Multijoueur() {
 
                 {!game.choice_p1 || !game.choice_p2 ? (
                     <>
-                        {/* Phase de choix */}
                         {!myChoice ? (
                             <div className="space-y-6">
-                                <h2 className="text-3xl font-black mb-8">Choisis ton arme !</h2>
-                                <div className="flex justify-center gap-4">
+                                <h2 className="text-2xl sm:text-3xl font-black mb-8">Choisis ton arme !</h2>
+                                <div className="flex justify-center gap-2 sm:gap-4">
                                     {['pierre', 'feuille', 'ciseaux'].map(arme => (
-                                        <button key={arme} onClick={() => makeChoice(arme)} className="w-24 h-24 bg-slate-800 hover:bg-slate-700 border-4 border-slate-600 hover:border-pink-500 rounded-3xl text-4xl shadow-xl transition-all transform hover:scale-110">
+                                        <button key={arme} onClick={() => makeChoice(arme)} className="w-20 h-20 sm:w-24 sm:h-24 bg-slate-800 hover:bg-slate-700 border-4 border-slate-600 hover:border-pink-500 rounded-2xl sm:rounded-3xl text-3xl sm:text-4xl shadow-xl transition-all transform hover:scale-110">
                                             {getEmoji(arme)}
                                         </button>
                                     ))}
@@ -219,18 +220,17 @@ export default function Multijoueur() {
                         )}
                     </>
                 ) : (
-                    // Révélation des choix (Combat !)
-                    <div className="bg-slate-800 p-8 rounded-[2rem] border-4 border-pink-500 w-full animate-in zoom-in duration-300">
-                        <h2 className="text-3xl font-black mb-8 text-white">🔥 COMBAT 🔥</h2>
-                        <div className="flex justify-between items-center px-4 sm:px-12">
+                    <div className="bg-slate-800 p-6 sm:p-8 rounded-[2rem] border-4 border-pink-500 w-full animate-in zoom-in duration-300">
+                        <h2 className="text-2xl sm:text-3xl font-black mb-8 text-white">🔥 COMBAT 🔥</h2>
+                        <div className="flex justify-between items-center px-2 sm:px-12">
                             <div className="text-center">
                                 <p className="text-indigo-400 font-bold mb-2">Toi</p>
-                                <div className="text-6xl animate-bounce">{getEmoji(game.player1_id === user.id ? game.choice_p1 : game.choice_p2)}</div>
+                                <div className="text-5xl sm:text-6xl animate-bounce">{getEmoji(game.player1_id === user.id ? game.choice_p1 : game.choice_p2)}</div>
                             </div>
-                            <span className="text-3xl font-black text-slate-600">VS</span>
+                            <span className="text-2xl sm:text-3xl font-black text-slate-600">VS</span>
                             <div className="text-center">
                                 <p className="text-red-400 font-bold mb-2">Adversaire</p>
-                                <div className="text-6xl animate-bounce" style={{ animationDelay: '0.2s' }}>{getEmoji(game.player1_id === user.id ? game.choice_p2 : game.choice_p1)}</div>
+                                <div className="text-5xl sm:text-6xl animate-bounce" style={{ animationDelay: '0.2s' }}>{getEmoji(game.player1_id === user.id ? game.choice_p2 : game.choice_p1)}</div>
                             </div>
                         </div>
                         <p className="mt-8 text-slate-400 font-bold animate-pulse">L'arbitre délibère...</p>
@@ -241,17 +241,17 @@ export default function Multijoueur() {
 
         {/* ÉCRAN 4 : RÉSULTAT */}
         {game?.status === 'finished' && (
-            <div className={`p-8 rounded-[2rem] border-4 w-full shadow-2xl text-center transform transition-all ${game.winner_id === user.id ? 'bg-emerald-900/50 border-emerald-500' : 'bg-red-900/50 border-red-500'}`}>
-                <span className="text-6xl mb-4 block">{game.winner_id === user.id ? '🏆' : '💀'}</span>
-                <h2 className="text-4xl font-black mb-2">{game.winner_id === user.id ? 'VICTOIRE !' : 'DÉFAITE...'}</h2>
+            <div className={`p-6 sm:p-8 rounded-[2rem] border-4 w-full shadow-2xl text-center transform transition-all ${game.winner_id === user.id ? 'bg-emerald-900/50 border-emerald-500' : 'bg-red-900/50 border-red-500'}`}>
+                <span className="text-5xl sm:text-6xl mb-4 block">{game.winner_id === user.id ? '🏆' : '💀'}</span>
+                <h2 className="text-3xl sm:text-4xl font-black mb-2">{game.winner_id === user.id ? 'VICTOIRE !' : 'DÉFAITE...'}</h2>
                 
                 {game.winner_id === user.id ? (
-                    <p className="text-emerald-400 font-black text-xl mb-8">Tu remportes {game.final_bet * 2} 🪙 !</p>
+                    <p className="text-emerald-400 font-black text-lg sm:text-xl mb-8">Tu remportes {game.final_bet * 2} 🪙 !</p>
                 ) : (
-                    <p className="text-red-400 font-bold text-lg mb-8">Tes {game.final_bet} 🪙 sont perdus à jamais.</p>
+                    <p className="text-red-400 font-bold text-base sm:text-lg mb-8">Tes {game.final_bet} 🪙 sont perdus à jamais.</p>
                 )}
 
-                <button onClick={() => { setGame(null); setMyChoice(null); }} className="w-full bg-slate-800 hover:bg-slate-700 text-white font-black py-4 rounded-2xl shadow-[0_4px_0_0_#1e293b] active:translate-y-1 active:shadow-none transition-all text-xl">
+                <button onClick={() => { setGame(null); setMyChoice(null); }} className="w-full bg-slate-800 hover:bg-slate-700 text-white font-black py-4 rounded-2xl shadow-[0_4px_0_0_#1e293b] active:translate-y-1 active:shadow-none transition-all text-lg sm:text-xl">
                     🔄 Retour au lobby
                 </button>
             </div>
