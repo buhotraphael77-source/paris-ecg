@@ -11,11 +11,13 @@ export default function Multijoueur() {
   const [game, setGame] = useState<any>(null);
   const [myChoice, setMyChoice] = useState<string | null>(null);
 
+  // useRef nous permet de lire les variables même quand la page se ferme
   const gameRef = useRef(game);
   const userPointsRef = useRef(userPoints);
   useEffect(() => { gameRef.current = game; }, [game]);
   useEffect(() => { userPointsRef.current = userPoints; }, [userPoints]);
 
+  // INITIALISATION
   useEffect(() => {
     async function checkUser() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -30,6 +32,19 @@ export default function Multijoueur() {
     checkUser();
   }, []);
 
+  // NOUVEAU : AUTO-NETTOYAGE À LA FERMETURE DE LA PAGE
+  useEffect(() => {
+    // La fonction retournée dans un useEffect s'exécute au "démontage" (quand on quitte la page)
+    return () => {
+      const currentGame = gameRef.current;
+      // Si on quitte la page alors qu'on cherchait un match, on supprime la salle d'attente
+      if (currentGame && currentGame.status === 'waiting') {
+        supabase.from('rps_games').delete().eq('id', currentGame.id).then();
+      }
+    };
+  }, []);
+
+  // GESTION DU TEMPS RÉEL
   useEffect(() => {
     if (!game) return;
 
@@ -78,6 +93,7 @@ export default function Multijoueur() {
       return 'p2';
   };
 
+  // LANCER LA RECHERCHE
   const handlePlay = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -111,6 +127,7 @@ export default function Multijoueur() {
     }
   };
 
+  // ANNULER LA RECHERCHE MANUELLEMENT
   const cancelMatchmaking = async () => {
     if (!game || !user) return;
     const { error } = await supabase.from('rps_games').delete().eq('id', game.id);
@@ -139,12 +156,9 @@ export default function Multijoueur() {
   return (
     <div className="min-h-screen bg-slate-900 text-white font-sans flex flex-col selection:bg-pink-500">
       
-      {/* HEADER SÉCURISÉ */}
       <header className="bg-slate-800/80 backdrop-blur-md shadow-lg border-b border-slate-700 p-4 sticky top-0 z-20 flex justify-between items-center">
-        
-        {/* On affiche le bouton Retour SEULEMENT si on n'est pas en recherche (waiting) */}
         {game?.status === 'waiting' ? (
-          <div className="w-24"></div> /* Boîte vide invisible pour garder l'alignement */
+          <div className="w-24"></div> 
         ) : (
           <Link href="/" className="text-xl sm:text-2xl font-black text-indigo-400 hover:text-indigo-300 transition-colors">
             ⬅️ Retour
@@ -180,14 +194,13 @@ export default function Multijoueur() {
             </div>
         )}
 
-        {/* ÉCRAN 2 : EN ATTENTE D'UN JOUEUR */}
+        {/* ÉCRAN 2 : EN ATTENTE */}
         {game?.status === 'waiting' && (
             <div className="bg-slate-800 p-8 sm:p-12 rounded-[2rem] border-2 border-slate-700 w-full shadow-2xl text-center flex flex-col items-center">
                 <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-6"></div>
                 <h2 className="text-2xl font-black text-indigo-400 mb-2 animate-pulse">Recherche en cours...</h2>
                 <p className="text-slate-400 font-bold mb-10">En attente d'un adversaire digne de ce nom.</p>
                 
-                {/* BOUTON D'ANNULATION */}
                 <button 
                   onClick={cancelMatchmaking}
                   className="bg-red-900/40 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/50 font-bold py-3 px-6 rounded-xl transition-all duration-300"
