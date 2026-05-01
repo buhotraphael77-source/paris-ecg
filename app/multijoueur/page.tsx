@@ -111,15 +111,10 @@ export default function Multijoueur() {
     }
   };
 
-  // NOUVELLE FONCTION : Annuler la recherche
   const cancelMatchmaking = async () => {
     if (!game || !user) return;
-    
-    // On supprime la partie en attente de la base de données pour nettoyer
     const { error } = await supabase.from('rps_games').delete().eq('id', game.id);
-    
     if (!error) {
-      // On réinitialise l'affichage pour revenir à l'écran de mise
       setGame(null);
     } else {
       alert("Erreur lors de l'annulation. La partie a peut-être déjà commencé !");
@@ -143,8 +138,19 @@ export default function Multijoueur() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white font-sans flex flex-col selection:bg-pink-500">
+      
+      {/* HEADER SÉCURISÉ */}
       <header className="bg-slate-800/80 backdrop-blur-md shadow-lg border-b border-slate-700 p-4 sticky top-0 z-20 flex justify-between items-center">
-        <Link href="/" className="text-xl sm:text-2xl font-black text-indigo-400 hover:text-indigo-300 transition-colors">⬅️ Retour</Link>
+        
+        {/* On affiche le bouton Retour SEULEMENT si on n'est pas en recherche (waiting) */}
+        {game?.status === 'waiting' ? (
+          <div className="w-24"></div> /* Boîte vide invisible pour garder l'alignement */
+        ) : (
+          <Link href="/" className="text-xl sm:text-2xl font-black text-indigo-400 hover:text-indigo-300 transition-colors">
+            ⬅️ Retour
+          </Link>
+        )}
+
         <div className="bg-yellow-400/20 border border-yellow-500 text-yellow-400 px-4 py-2 rounded-2xl font-black flex items-center gap-2">
           🪙 {userPoints}
         </div>
@@ -181,7 +187,7 @@ export default function Multijoueur() {
                 <h2 className="text-2xl font-black text-indigo-400 mb-2 animate-pulse">Recherche en cours...</h2>
                 <p className="text-slate-400 font-bold mb-10">En attente d'un adversaire digne de ce nom.</p>
                 
-                {/* NOUVEAU BOUTON D'ANNULATION */}
+                {/* BOUTON D'ANNULATION */}
                 <button 
                   onClick={cancelMatchmaking}
                   className="bg-red-900/40 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/50 font-bold py-3 px-6 rounded-xl transition-all duration-300"
