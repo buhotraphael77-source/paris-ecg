@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { supabase } from './lib/supabase';
 
 export default function Home() {
-  // VARIABLES (Paris classiques, Utilisateur)
   const [selectedOption, setSelectedOption] = useState<any>(null);
   const [betAmount, setBetAmount] = useState("");
   const [realBets, setRealBets] = useState<any[]>([]);
@@ -15,7 +14,6 @@ export default function Home() {
   const [userExistingBets, setUserExistingBets] = useState<string[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
 
-  // VARIABLES (Création de pari)
   const [isCreatingBet, setIsCreatingBet] = useState(false);
   const [newBetTitle, setNewBetTitle] = useState("");
   const [newBetDeadline, setNewBetDeadline] = useState("");
@@ -24,7 +22,6 @@ export default function Home() {
   const [option2Title, setOption2Title] = useState("Non");
   const [option2Odds, setOption2Odds] = useState("");
 
-  // VARIABLES (Course de Chevaux - ex-Billes)
   const [currentHorseRace, setCurrentHorseRace] = useState<any>(null);
   const [myHorseBet, setMyHorseBet] = useState<number | null>(null);
   const [showRaceModal, setShowRaceModal] = useState(false);
@@ -32,13 +29,9 @@ export default function Home() {
   const [raceDurations, setRaceDurations] = useState<{ [key: number]: number }>({});
   const [showRaceResults, setShowRaceResults] = useState(false);
   
-  // Sécurité pour le lancement automatique
   const autoRaceTriggered = useRef(false);
-
-  // VARIABLE (Guide)
   const [showGuideModal, setShowGuideModal] = useState(false);
 
-  // --- LOGIQUE TEMPORELLE DU PLANNING ---
   const [timeState, setTimeState] = useState({
     isBettingOpen: false,
     isPreparing: false,
@@ -88,12 +81,11 @@ export default function Home() {
 
   const fetchHorseRace = async (userId: string | undefined) => {
     calculateTimePhase(); 
-    
     const now = new Date();
     const currentTime = now.getHours() * 60 + now.getMinutes();
     
     if (currentTime >= (12 * 60 + 50) && currentTime < (15 * 60)) {
-      await supabase.rpc('trigger_marble_race'); // Toujours "marble" en base de données pour ne rien casser
+      await supabase.rpc('trigger_marble_race'); 
     }
 
     const targetDate = new Date();
@@ -102,7 +94,6 @@ export default function Home() {
     }
     
     const targetString = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
-
     const { data: races } = await supabase.from('marble_races').select('*').eq('race_date', targetString).limit(1);
     
     if (races && races.length > 0) {
@@ -124,7 +115,6 @@ export default function Home() {
     else fetchHorseRace(undefined);
   };
 
-  // CHRONOMÈTRE AUTOMATIQUE
   useEffect(() => {
     const clockInterval = setInterval(() => {
       calculateTimePhase();
@@ -427,9 +417,29 @@ export default function Home() {
             <button onClick={() => setShowGuideModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 font-black text-xl w-8 h-8 flex items-center justify-center bg-slate-100 rounded-full">✕</button>
             <h2 className="text-3xl font-black text-indigo-800 mb-6 flex items-center gap-3 border-b-2 border-indigo-100 pb-4"><span className="text-4xl">📖</span> Guide ParisEcg</h2>
             <div className="space-y-8 text-slate-700">
-              <section><h3 className="text-xl font-black text-slate-900 mb-2 flex items-center gap-2"><span>🎯</span> 1. Les Paris Classiques</h3><p className="leading-relaxed font-medium bg-slate-50 p-4 rounded-xl border-2 border-slate-100">Parie sur des événements de la vie de l'école. Choisis ton option, défini ta mise et c'est tout !</p></section>
-              <section><h3 className="text-xl font-black text-slate-900 mb-2 flex items-center gap-2"><span>🐎</span> 2. Course de Chevaux</h3><p className="leading-relaxed font-medium bg-amber-50 p-4 rounded-xl border-2 border-amber-200">La course se lance <strong>automatiquement à 12h50</strong>. Attention, fin des paris à 12h00 ! Les guichets rouvrent à 15h05 pour la course du lendemain.</p></section>
-              <section><h3 className="text-xl font-black text-slate-900 mb-2 flex items-center gap-2"><span>⚔️</span> 3. Jeu Multijoueur</h3><p className="leading-relaxed font-medium bg-pink-50 p-4 rounded-xl border-2 border-pink-200">Défie un autre joueur au Pierre-Feuille-Ciseaux en ligne.</p></section>
+              <section>
+                <h3 className="text-xl font-black text-slate-900 mb-2 flex items-center gap-2"><span>🎯</span> 1. Les Paris Classiques</h3>
+                <p className="leading-relaxed font-medium bg-slate-50 p-4 rounded-xl border-2 border-slate-100">
+                  Parie sur des événements de la vie de l'école. Choisis ton option, définis ta mise et c'est tout !<br/><br/>
+                  <strong className="text-indigo-600">Le secret :</strong> Au moment où tu valides ton pari, <strong>ta cote est bloquée</strong>. Si tu paries sur une cote de 2.00, tes gains seront calculés avec ce chiffre, même si la cote change après toi.<br/>
+                  Notre algorithme ajuste d'ailleurs les cotes en direct selon les mises des autres joueurs.
+                </p>
+              </section>
+              <section>
+                <h3 className="text-xl font-black text-slate-900 mb-2 flex items-center gap-2"><span>🐎</span> 2. Course de Chevaux</h3>
+                <p className="leading-relaxed font-medium bg-amber-50 p-4 rounded-xl border-2 border-amber-200">
+                  La grande course quotidienne ! Elle se lance <strong>automatiquement à 12h50</strong>.<br/>
+                  Attention, la fin des paris est fixée à 12h00 strict ! Achète ton ticket pour 50 🪙. Le 1er gagne 500 🪙, le 2ème 200 🪙 et le 3ème 100 🪙. <br/>
+                  Les guichets rouvrent à 15h05 pour la course du lendemain.
+                </p>
+              </section>
+              <section>
+                <h3 className="text-xl font-black text-slate-900 mb-2 flex items-center gap-2"><span>⚔️</span> 3. Jeu Multijoueur</h3>
+                <p className="leading-relaxed font-medium bg-pink-50 p-4 rounded-xl border-2 border-pink-200">
+                  Défie un autre joueur au Pierre-Feuille-Ciseaux en ligne en temps réel.<br/>
+                  Choisis ta mise. Si tu tombes sur un adversaire avec une mise différente, le jeu tire la mise finale au sort. En cas d'égalité (Pierre contre Pierre par ex.), le jeu relance la manche sans vous faire payer de nouveau !
+                </p>
+              </section>
             </div>
             <button onClick={() => setShowGuideModal(false)} className="w-full mt-8 bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-[0_4px_0_0_#4338ca]">J'ai tout compris, let's go !</button>
           </div>
@@ -441,8 +451,14 @@ export default function Home() {
              <div className="bg-white rounded-[2rem] p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200 border-4 border-emerald-100 max-h-[90vh] overflow-y-auto">
                  <div className="flex items-center gap-3 mb-6"><span className="text-3xl">✨</span><h3 className="text-2xl font-black text-slate-800">Nouveau Pari</h3></div>
                  <form onSubmit={handleCreateBet} className="space-y-4">
-                     <div><input type="text" required value={newBetTitle} onChange={(e) => setNewBetTitle(e.target.value)} className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800" placeholder="Ex: Le prof va-t-il dire 'Bonjour' ?" /></div>
-                     <div><input type="datetime-local" required value={newBetDeadline} onChange={(e) => setNewBetDeadline(e.target.value)} className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800" /></div>
+                     <div>
+                        <label className="block text-sm font-black text-slate-600 mb-2 ml-2">Titre du pari</label>
+                        <input type="text" required value={newBetTitle} onChange={(e) => setNewBetTitle(e.target.value)} className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800" placeholder="Ex: Le prof va-t-il dire 'Bonjour' ?" />
+                     </div>
+                     <div>
+                        <label className="block text-sm font-black text-slate-600 mb-2 ml-2">Date de fin du pari (Clôture)</label>
+                        <input type="datetime-local" required value={newBetDeadline} onChange={(e) => setNewBetDeadline(e.target.value)} className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800" />
+                     </div>
                      <div className="flex gap-4">
                          <div className="flex-1"><input type="text" required value={option1Title} onChange={(e) => setOption1Title(e.target.value)} className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800 mb-2" placeholder="Choix 1" /><input type="number" step="0.01" min="1.2" max="3" required value={option1Odds} onChange={(e) => setOption1Odds(e.target.value)} placeholder="Cote" className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800" /></div>
                          <div className="flex-1"><input type="text" required value={option2Title} onChange={(e) => setOption2Title(e.target.value)} className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800 mb-2" placeholder="Choix 2" /><input type="number" step="0.01" min="1.2" max="3" required value={option2Odds} onChange={(e) => setOption2Odds(e.target.value)} placeholder="Cote" className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800" /></div>
@@ -465,7 +481,7 @@ export default function Home() {
           </div>
       )}
 
-      {/* 🚀 LE NOUVEL HIPPODROME COMPACT ET LISIBLE (Toutes les pistes visibles) */}
+      {/* 🚀 LE NOUVEL HIPPODROME COMPACT ET LISIBLE */}
       {showRaceModal && currentHorseRace && (
           <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-xl flex items-center justify-center z-[200] p-2 sm:p-4">
               <div className="bg-emerald-900 rounded-2xl sm:rounded-[2rem] p-3 sm:p-6 w-full max-w-3xl shadow-2xl border-4 border-amber-600 relative overflow-hidden flex flex-col">
@@ -475,24 +491,15 @@ export default function Home() {
                   {!showRaceResults && <div className="bg-red-600 text-white px-2 py-1 rounded-md font-black text-xs animate-pulse">🔴 DIRECT</div>}
                 </div>
                 
-                {/* LA PISTE (Sable de l'hippodrome) */}
+                {/* LA PISTE */}
                 <div className="bg-[#b45309] border-4 border-[#78350f] rounded-xl p-2 relative flex-grow">
-                    
-                    {/* Lignes de Départ et d'Arrivée */}
                     <div className="absolute top-0 bottom-0 left-[2.5rem] sm:left-[3.5rem] w-1 bg-white/30 z-0"></div>
                     <div className="absolute top-0 bottom-0 right-[1rem] sm:right-[1.5rem] w-2 sm:w-3 bg-red-600 border-x border-white z-0 opacity-90"></div>
                     
-                    {/* Les 10 couloirs très compacts */}
                     <div className="flex flex-col gap-[2px] sm:gap-1">
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
                             <div key={num} className="flex items-center h-6 sm:h-8 relative z-10 border-b border-black/10 last:border-0">
-                                
-                                {/* Numéro du cheval */}
-                                <div className="w-6 sm:w-10 flex-shrink-0 text-center font-black text-amber-200 text-xs sm:text-sm">
-                                  {num}
-                                </div>
-                                
-                                {/* Zone de course */}
+                                <div className="w-6 sm:w-10 flex-shrink-0 text-center font-black text-amber-200 text-xs sm:text-sm">{num}</div>
                                 <div className="flex-grow h-full relative border-l border-white/20">
                                     <div 
                                       className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center transition-all ease-in-out
@@ -525,27 +532,6 @@ export default function Home() {
                         </div>
                     </div>
                 )}
-              </div>
-          </div>
-      )}
-
-      {notifications.length > 0 && (
-          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
-              <div className="bg-white rounded-[2rem] p-8 w-full max-w-md shadow-2xl text-center animate-in zoom-in duration-300 border-4 border-white">
-                  <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-yellow-200"><span className="text-4xl animate-bounce">🔔</span></div>
-                  <h2 className="text-2xl font-black text-slate-800 mb-6">Nouveaux Résultats !</h2>
-                  <div className="space-y-4 max-h-[50vh] overflow-y-auto mb-8 text-left pr-2">
-                      {notifications.map(notif => {
-                          const isWinner = notif.option_id === notif.bets.winning_option_id;
-                          return (
-                              <div key={notif.id} className={`p-5 rounded-2xl border-4 flex flex-col ${isWinner ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
-                                  <p className="font-black text-slate-700 mb-2">{notif.bets.title}</p>
-                                  {isWinner ? <p className="text-emerald-600 font-black">🎉 Gagné ! +{Math.floor(notif.amount * (notif.locked_odds || 2.00))} pts</p> : <p className="text-red-500 font-bold">❌ Perdu -{notif.amount} pts</p>}
-                              </div>
-                          )
-                      })}
-                  </div>
-                  <button onClick={markNotificationsAsRead} className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-[0_5px_0_0_#4338ca]">C'est noté !</button>
               </div>
           </div>
       )}
