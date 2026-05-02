@@ -108,11 +108,21 @@ export default function Home() {
     setLoading(false);
   };
 
+  // 🔄 CORRECTION DE LA SYNCHRONISATION
   const fetchEverything = async () => {
     fetchBets();
     const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) fetchHorseRace(session.user.id);
-    else fetchHorseRace(undefined);
+    
+    if (session?.user) {
+      fetchHorseRace(session.user.id);
+      
+      // On rafraîchit le solde de l'utilisateur silencieusement en arrière-plan !
+      const { data: profileData } = await supabase.from('profiles').select('points').eq('id', session.user.id).maybeSingle(); 
+      if (profileData) setUserPoints(profileData.points);
+      
+    } else {
+      fetchHorseRace(undefined);
+    }
   };
 
   useEffect(() => {
@@ -226,7 +236,11 @@ export default function Home() {
     
     setTimeout(() => {
         setRaceStarted(true);
-        setTimeout(() => { setShowRaceResults(true); fetchEverything(); }, 12500); 
+        // Le moment clé ! L'animation dure 12.5s. À cet instant précis on affiche le podium ET on fetch les points !
+        setTimeout(() => { 
+          setShowRaceResults(true); 
+          fetchEverything(); 
+        }, 12500); 
     }, 500);
   };
 
@@ -270,7 +284,6 @@ export default function Home() {
               </div>
 
               <div className="bg-white/10 p-5 rounded-2xl border border-white/20 backdrop-blur-md">
-                
                 {timeState.isCleaning && (
                   <div className="text-center py-6">
                       <span className="text-5xl mb-4 block animate-bounce">🧹</span>
@@ -278,7 +291,6 @@ export default function Home() {
                       <p className="text-emerald-200 mt-2 font-bold max-w-md mx-auto">Les guichets rouvrent à 15h05 précises pour la prochaine course !</p>
                   </div>
                 )}
-
                 {timeState.isLiveOrReplay && (
                    <div className="text-center py-6">
                        <span className="text-5xl mb-4 block">🏆</span>
@@ -295,7 +307,6 @@ export default function Home() {
                        )}
                    </div>
                 )}
-
                 {timeState.isPreparing && (
                   <div className="text-center py-6">
                       <span className="text-5xl mb-4 block">🚧</span>
@@ -304,7 +315,6 @@ export default function Home() {
                       <p className="text-emerald-200 mt-2 font-bold max-w-md mx-auto">Les paris sont clos. Reste connecté, départ imminent à 12h50 !</p>
                   </div>
                 )}
-
                 {timeState.isBettingOpen && (
                   myHorseBet ? (
                     <div className="text-center py-4">
@@ -326,7 +336,6 @@ export default function Home() {
                     </>
                   )
                 )}
-
               </div>
             </div>
           </div>
@@ -415,33 +424,41 @@ export default function Home() {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[150] p-4">
           <div className="bg-white rounded-[2rem] p-6 sm:p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl animate-in zoom-in-95 duration-200 border-4 border-indigo-100 relative">
             <button onClick={() => setShowGuideModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 font-black text-xl w-8 h-8 flex items-center justify-center bg-slate-100 rounded-full">✕</button>
-            <h2 className="text-3xl font-black text-indigo-800 mb-6 flex items-center gap-3 border-b-2 border-indigo-100 pb-4"><span className="text-4xl">📖</span> Guide ParisEcg</h2>
+            <h2 className="text-3xl font-black text-indigo-800 mb-6 flex items-center gap-3 border-b-2 border-indigo-100 pb-4"><span className="text-4xl">📖</span> Guide Complet ParisEcg</h2>
             <div className="space-y-8 text-slate-700">
+              <section>
+                <h3 className="text-xl font-black text-slate-900 mb-2 flex items-center gap-2"><span>🏦</span> Le But du Jeu</h3>
+                <p className="leading-relaxed font-medium bg-slate-50 p-4 rounded-xl border-2 border-slate-100">
+                  À ton inscription, tu reçois <strong>1000 🪙</strong>. Ton objectif est de parier stratégiquement sur les différents mini-jeux et événements de l'école pour accumuler un maximum de pièces et atteindre le sommet du <strong>Classement Général (Top)</strong>.
+                </p>
+              </section>
               <section>
                 <h3 className="text-xl font-black text-slate-900 mb-2 flex items-center gap-2"><span>🎯</span> 1. Les Paris Classiques</h3>
                 <p className="leading-relaxed font-medium bg-slate-50 p-4 rounded-xl border-2 border-slate-100">
-                  Parie sur des événements de la vie de l'école. Choisis ton option, définis ta mise et c'est tout !<br/><br/>
-                  <strong className="text-indigo-600">Le secret :</strong> Au moment où tu valides ton pari, <strong>ta cote est bloquée</strong>. Si tu paries sur une cote de 2.00, tes gains seront calculés avec ce chiffre, même si la cote change après toi.<br/>
-                  Notre algorithme ajuste d'ailleurs les cotes en direct selon les mises des autres joueurs.
+                  Parie sur des événements créés par les autres élèves (ex: "Le prof va-t-il dire 'Bonjour' ?"). Tu peux aussi créer tes propres paris !<br/><br/>
+                  <strong className="text-indigo-600">Cote Bloquée :</strong> Au moment où tu valides ton pari, <strong>ta cote est verrouillée</strong>. Si la cote baisse plus tard à cause d'autres joueurs, tu conserves tes gains potentiels de départ !<br/>
+                  <strong className="text-indigo-600">Variation Dynamique :</strong> L'algorithme ajuste les cotes en direct. Si beaucoup de monde parie sur "Oui", la cote du "Oui" baisse (car jugée très probable) et celle du "Non" augmente. Sois le premier à dénicher les bons filons !
                 </p>
               </section>
               <section>
                 <h3 className="text-xl font-black text-slate-900 mb-2 flex items-center gap-2"><span>🐎</span> 2. Course de Chevaux</h3>
                 <p className="leading-relaxed font-medium bg-amber-50 p-4 rounded-xl border-2 border-amber-200">
-                  La grande course quotidienne ! Elle se lance <strong>automatiquement à 12h50</strong>.<br/>
-                  Attention, la fin des paris est fixée à 12h00 strict ! Achète ton ticket pour 50 🪙. Le 1er gagne 500 🪙, le 2ème 200 🪙 et le 3ème 100 🪙. <br/>
-                  Les guichets rouvrent à 15h05 pour la course du lendemain.
+                  Le rendez-vous quotidien de l'école ! Tous les jours à <strong>12h50 précises</strong>, une course virtuelle a lieu.<br/><br/>
+                  • <strong>Achat des tickets :</strong> Le prix est de 50 🪙. Les guichets ferment strictement à 12h00.<br/>
+                  • <strong>Le Podium :</strong> Le ticket gagnant te rapporte <strong>500 🪙</strong>, le 2ème te donne 200 🪙, et le 3ème offre 100 🪙.<br/>
+                  • <strong>Le Direct :</strong> Connecte-toi à 12h50 pour voir tes chevaux galoper en direct dans l'Hippodrome virtuel. Le replay reste disponible jusqu'à 15h00.
                 </p>
               </section>
               <section>
-                <h3 className="text-xl font-black text-slate-900 mb-2 flex items-center gap-2"><span>⚔️</span> 3. Jeu Multijoueur</h3>
+                <h3 className="text-xl font-black text-slate-900 mb-2 flex items-center gap-2"><span>⚔️</span> 3. Multijoueur (PFC 1v1)</h3>
                 <p className="leading-relaxed font-medium bg-pink-50 p-4 rounded-xl border-2 border-pink-200">
-                  Défie un autre joueur au Pierre-Feuille-Ciseaux en ligne en temps réel.<br/>
-                  Choisis ta mise. Si tu tombes sur un adversaire avec une mise différente, le jeu tire la mise finale au sort. En cas d'égalité (Pierre contre Pierre par ex.), le jeu relance la manche sans vous faire payer de nouveau !
+                  Défie un autre joueur connecté en ligne dans une partie de Pierre-Feuille-Ciseaux.<br/><br/>
+                  • <strong>Le Matchmaking :</strong> Choisis ta mise et cherche un adversaire. Si vos mises sont différentes, l'ordinateur tire au sort la <strong>mise finale</strong> de la partie. Si tu n'as pas assez de fonds pour couvrir le tirage au sort, la partie est annulée.<br/>
+                  • <strong>L'Égalité :</strong> En cas d'égalité parfaite (ex: Pierre vs Pierre), la partie est relancée automatiquement. Vous ne payez pas de nouvelle mise !
                 </p>
               </section>
             </div>
-            <button onClick={() => setShowGuideModal(false)} className="w-full mt-8 bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-[0_4px_0_0_#4338ca]">J'ai tout compris, let's go !</button>
+            <button onClick={() => setShowGuideModal(false)} className="w-full mt-8 bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-[0_4px_0_0_#4338ca] hover:translate-y-1 hover:shadow-none transition-all">J'ai tout compris, let's go !</button>
           </div>
         </div>
       )}
@@ -452,18 +469,30 @@ export default function Home() {
                  <div className="flex items-center gap-3 mb-6"><span className="text-3xl">✨</span><h3 className="text-2xl font-black text-slate-800">Nouveau Pari</h3></div>
                  <form onSubmit={handleCreateBet} className="space-y-4">
                      <div>
-                        <label className="block text-sm font-black text-slate-600 mb-2 ml-2">Titre du pari</label>
-                        <input type="text" required value={newBetTitle} onChange={(e) => setNewBetTitle(e.target.value)} className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800" placeholder="Ex: Le prof va-t-il dire 'Bonjour' ?" />
+                        <label className="block text-sm font-black text-slate-600 mb-2 ml-1">Titre du pari</label>
+                        <input type="text" required value={newBetTitle} onChange={(e) => setNewBetTitle(e.target.value)} className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800 focus:border-emerald-400 focus:outline-none transition-colors" placeholder="Ex: Le prof va-t-il dire 'Bonjour' ?" />
                      </div>
                      <div>
-                        <label className="block text-sm font-black text-slate-600 mb-2 ml-2">Date de fin du pari (Clôture)</label>
-                        <input type="datetime-local" required value={newBetDeadline} onChange={(e) => setNewBetDeadline(e.target.value)} className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800" />
+                        <label className="block text-sm font-black text-slate-600 mb-1 ml-1">Date et Heure exactes de fin (Clôture)</label>
+                        <p className="text-[11px] text-slate-400 mb-2 ml-1 font-bold">Après cette date, les joueurs ne pourront plus parier.</p>
+                        <input type="datetime-local" required value={newBetDeadline} onChange={(e) => setNewBetDeadline(e.target.value)} className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800 focus:border-emerald-400 focus:outline-none transition-colors" />
                      </div>
                      <div className="flex gap-4">
-                         <div className="flex-1"><input type="text" required value={option1Title} onChange={(e) => setOption1Title(e.target.value)} className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800 mb-2" placeholder="Choix 1" /><input type="number" step="0.01" min="1.2" max="3" required value={option1Odds} onChange={(e) => setOption1Odds(e.target.value)} placeholder="Cote" className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800" /></div>
-                         <div className="flex-1"><input type="text" required value={option2Title} onChange={(e) => setOption2Title(e.target.value)} className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800 mb-2" placeholder="Choix 2" /><input type="number" step="0.01" min="1.2" max="3" required value={option2Odds} onChange={(e) => setOption2Odds(e.target.value)} placeholder="Cote" className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800" /></div>
+                         <div className="flex-1">
+                            <label className="block text-sm font-black text-slate-600 mb-2 ml-1">Option 1</label>
+                            <input type="text" required value={option1Title} onChange={(e) => setOption1Title(e.target.value)} className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800 mb-2 focus:border-emerald-400 focus:outline-none" placeholder="Choix 1" />
+                            <input type="number" step="0.01" min="1.2" max="3" required value={option1Odds} onChange={(e) => setOption1Odds(e.target.value)} placeholder="Cote initiale" className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800 focus:border-emerald-400 focus:outline-none" />
+                          </div>
+                         <div className="flex-1">
+                            <label className="block text-sm font-black text-slate-600 mb-2 ml-1">Option 2</label>
+                            <input type="text" required value={option2Title} onChange={(e) => setOption2Title(e.target.value)} className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800 mb-2 focus:border-emerald-400 focus:outline-none" placeholder="Choix 2" />
+                            <input type="number" step="0.01" min="1.2" max="3" required value={option2Odds} onChange={(e) => setOption2Odds(e.target.value)} placeholder="Cote initiale" className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl p-3 font-bold text-slate-800 focus:border-emerald-400 focus:outline-none" />
+                          </div>
                      </div>
-                     <div className="flex gap-4 mt-6"><button type="button" onClick={() => setIsCreatingBet(false)} className="flex-1 bg-slate-100 text-slate-500 font-black py-4 rounded-2xl border-2 border-slate-200">Annuler</button><button type="submit" className="flex-[2] bg-emerald-500 text-white font-black py-4 rounded-2xl shadow-[0_4px_0_0_#047857]">Mettre en ligne</button></div>
+                     <div className="flex gap-4 mt-6">
+                        <button type="button" onClick={() => setIsCreatingBet(false)} className="flex-1 bg-slate-100 text-slate-500 font-black py-4 rounded-2xl border-2 border-slate-200 hover:bg-slate-200 transition-colors">Annuler</button>
+                        <button type="submit" className="flex-[2] bg-emerald-500 text-white font-black py-4 rounded-2xl shadow-[0_4px_0_0_#047857] hover:translate-y-1 hover:shadow-none transition-all">Mettre en ligne</button>
+                     </div>
                  </form>
              </div>
          </div>
@@ -474,28 +503,23 @@ export default function Home() {
             <div className="bg-white rounded-[2rem] p-6 w-full max-w-md shadow-2xl border-4 border-indigo-100">
                 <div className="bg-indigo-50 rounded-2xl p-4 mb-6 border-2 border-indigo-100"><p className="text-sm text-indigo-400 font-bold mb-1">Tu paries sur :</p><h3 className="text-xl font-black text-indigo-900">{selectedOption.betTitle}</h3></div>
                 <form onSubmit={handleSubmit}>
-                    <div className="mb-8"><div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl">🪙</span><input type="number" min="1" max={userPoints} required value={betAmount} onChange={(e) => setBetAmount(e.target.value)} className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl py-4 pl-14 pr-4 text-xl font-black" placeholder={`Max: ${userPoints}`}/></div></div>
-                    <div className="flex gap-4"><button type="button" onClick={closeModal} className="flex-1 bg-slate-100 text-slate-500 font-black py-4 rounded-2xl border-2 border-slate-200">Annuler</button><button type="submit" className="flex-[2] bg-pink-500 text-white font-black py-4 rounded-2xl shadow-[0_4px_0_0_#be185d]">Valider !</button></div>
+                    <div className="mb-8"><div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl">🪙</span><input type="number" min="1" max={userPoints} required value={betAmount} onChange={(e) => setBetAmount(e.target.value)} className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl py-4 pl-14 pr-4 text-xl font-black focus:border-indigo-400 focus:outline-none transition-colors" placeholder={`Max: ${userPoints}`}/></div></div>
+                    <div className="flex gap-4"><button type="button" onClick={closeModal} className="flex-1 bg-slate-100 text-slate-500 font-black py-4 rounded-2xl border-2 border-slate-200 hover:bg-slate-200 transition-colors">Annuler</button><button type="submit" className="flex-[2] bg-pink-500 text-white font-black py-4 rounded-2xl shadow-[0_4px_0_0_#be185d] hover:translate-y-1 hover:shadow-none transition-all">Valider !</button></div>
                 </form>
             </div>
           </div>
       )}
 
-      {/* 🚀 LE NOUVEL HIPPODROME COMPACT ET LISIBLE */}
       {showRaceModal && currentHorseRace && (
           <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-xl flex items-center justify-center z-[200] p-2 sm:p-4">
               <div className="bg-emerald-900 rounded-2xl sm:rounded-[2rem] p-3 sm:p-6 w-full max-w-3xl shadow-2xl border-4 border-amber-600 relative overflow-hidden flex flex-col">
-                
                 <div className="flex justify-between items-center mb-3 sm:mb-4 shrink-0">
                   <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">🏁 Grand Prix</h2>
                   {!showRaceResults && <div className="bg-red-600 text-white px-2 py-1 rounded-md font-black text-xs animate-pulse">🔴 DIRECT</div>}
                 </div>
-                
-                {/* LA PISTE */}
                 <div className="bg-[#b45309] border-4 border-[#78350f] rounded-xl p-2 relative flex-grow">
                     <div className="absolute top-0 bottom-0 left-[2.5rem] sm:left-[3.5rem] w-1 bg-white/30 z-0"></div>
                     <div className="absolute top-0 bottom-0 right-[1rem] sm:right-[1.5rem] w-2 sm:w-3 bg-red-600 border-x border-white z-0 opacity-90"></div>
-                    
                     <div className="flex flex-col gap-[2px] sm:gap-1">
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
                             <div key={num} className="flex items-center h-6 sm:h-8 relative z-10 border-b border-black/10 last:border-0">
@@ -505,11 +529,7 @@ export default function Home() {
                                       className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center transition-all ease-in-out
                                           ${num === myHorseBet ? 'z-20 scale-125 drop-shadow-[0_0_8px_rgba(250,204,21,0.8)]' : 'opacity-90'}
                                       `} 
-                                      style={{ 
-                                        left: raceStarted ? 'calc(100% - 2rem)' : '0px', 
-                                        transitionDuration: raceStarted ? `${raceDurations[num]}s` : '0s',
-                                        fontSize: '1.5rem'
-                                      }}
+                                      style={{ left: raceStarted ? 'calc(100% - 2rem)' : '0px', transitionDuration: raceStarted ? `${raceDurations[num]}s` : '0s', fontSize: '1.5rem' }}
                                     >
                                         {num === myHorseBet ? '🏇' : '🐎'}
                                     </div>
@@ -518,7 +538,6 @@ export default function Home() {
                         ))}
                     </div>
                 </div>
-                
                 {showRaceResults && (
                     <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-500 p-4">
                         <div className="bg-white rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl border-4 border-amber-400">
@@ -528,10 +547,31 @@ export default function Home() {
                               <p className="text-lg font-black text-slate-400">🥈 Cheval {currentHorseRace.winner_2}</p>
                               <p className="text-base font-black text-amber-700">🥉 Cheval {currentHorseRace.winner_3}</p>
                             </div>
-                            <button onClick={() => setShowRaceModal(false)} className="w-full bg-slate-800 text-white font-black py-3 rounded-xl shadow-[0_4px_0_0_#0f172a]">Fermer</button>
+                            <button onClick={() => setShowRaceModal(false)} className="w-full bg-slate-800 text-white font-black py-3 rounded-xl shadow-[0_4px_0_0_#0f172a] hover:translate-y-1 hover:shadow-none transition-all">Fermer</button>
                         </div>
                     </div>
                 )}
+              </div>
+          </div>
+      )}
+
+      {notifications.length > 0 && (
+          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+              <div className="bg-white rounded-[2rem] p-8 w-full max-w-md shadow-2xl text-center animate-in zoom-in duration-300 border-4 border-white">
+                  <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-yellow-200"><span className="text-4xl animate-bounce">🔔</span></div>
+                  <h2 className="text-2xl font-black text-slate-800 mb-6">Nouveaux Résultats !</h2>
+                  <div className="space-y-4 max-h-[50vh] overflow-y-auto mb-8 text-left pr-2">
+                      {notifications.map(notif => {
+                          const isWinner = notif.option_id === notif.bets.winning_option_id;
+                          return (
+                              <div key={notif.id} className={`p-5 rounded-2xl border-4 flex flex-col ${isWinner ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                                  <p className="font-black text-slate-700 mb-2">{notif.bets.title}</p>
+                                  {isWinner ? <p className="text-emerald-600 font-black">🎉 Gagné ! +{Math.floor(notif.amount * (notif.locked_odds || 2.00))} pts</p> : <p className="text-red-500 font-bold">❌ Perdu -{notif.amount} pts</p>}
+                              </div>
+                          )
+                      })}
+                  </div>
+                  <button onClick={markNotificationsAsRead} className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-[0_5px_0_0_#4338ca] hover:translate-y-1 hover:shadow-none transition-all">C'est noté !</button>
               </div>
           </div>
       )}
