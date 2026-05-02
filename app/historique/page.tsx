@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabase';
 
-// Mise à jour de la structure pour inclure le choix et la cote
 type HistoryItem = {
   id: string;
   date: Date;
@@ -33,14 +32,18 @@ export default function Historique() {
       const userId = session.user.id;
 
       let allHistory: HistoryItem[] = [];
+      const now = new Date();
+      // On convertit l'heure actuelle en minutes pour faciliter le calcul
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
-      // 1. Récupération des Paris Classiques (On récupère aussi le titre du choix dans bet_options)
+      // 1. Récupération des Paris Classiques
       const { data: classicBets } = await supabase
         .from('user_bets')
         .select(`
           id, created_at, amount, option_id, locked_odds, 
           bets!inner (title, status, winning_option_id),
-          bet_options (title)
+          bet_options!inner (title)
         `)
         .eq('user_id', userId);
 
@@ -54,24 +57,14 @@ export default function Historique() {
             gain = result === 'Gagné' ? Math.floor(b.amount * (b.locked_odds || 2)) : -b.amount;
           }
 
-          // Extraction sécurisée du nom du choix
           let choiceTitle = 'Inconnu';
-          if (b.bet_options && !Array.isArray(b.bet_options)) {
-            choiceTitle = b.bet_options.title;
-          } else if (Array.isArray(b.bet_options) && b.bet_options.length > 0) {
-            choiceTitle = b.bet_options[0].title;
+          if (b.bet_options) {
+            choiceTitle = Array.isArray(b.bet_options) ? b.bet_options[0]?.title : b.bet_options.title;
           }
 
           allHistory.push({ 
-            id: `classic_${b.id}`, 
-            date: new Date(b.created_at), 
-            type: 'Classique', 
-            title: b.bets.title, 
-            result, 
-            amount: b.amount, 
-            gain,
-            choice: choiceTitle,
-            odds: b.locked_odds
+            id: `classic_${b.id}`, date: new Date(b.created_at), type: 'Classique', 
+            title: b.bets.title, result, amount: b.amount, gain, choice: choiceTitle, odds: b.locked_odds
           });
         });
       }
@@ -79,7 +72,7 @@ export default function Historique() {
       // 2. Récupération des Courses de Chevaux
       const { data: marbleBets } = await supabase
         .from('marble_bets')
-        .select(`id, created_at, amount, marble_number, marble_races!inner (status, winner_1, winner_2, winner_3)`)
+        .select(`id, created_at, amount, marble_number, marble_races!inner (status, winner_1, winner_2, winner_3, race_date)`)
         .eq('user_id', userId);
 
       if (marbleBets) {
@@ -87,22 +80,26 @@ export default function Historique() {
           let result: 'En cours' | 'Gagné' | 'Perdu' = 'En cours';
           let gain = 0;
           
-          // Sécurité : On vérifie que la course est finie ET qu'un gagnant est bien enregistré
           if (m.marble_races.status === 'closed' && m.marble_races.winner_1 !== null) {
-            if (m.marble_number === m.marble_races.winner_1) { result = 'Gagné'; gain = 500; }
-            else if (m.marble_number === m.marble_races.winner_2) { result = 'Gagné'; gain = 200; }
-            else if (m.marble_number === m.marble_races.winner_3) { result = 'Gagné'; gain = 100; }
-            else { result = 'Perdu'; gain = -50; }
+            // CORRECTION ANTI-SPOILER : On vérifie si c'est la course d'aujourd'hui
+            const isTodayRace = m.marble_races.race_date === todayStr;
+            const TIME_REVEAL = 12 * 60 + 52; // 12h52 en minutes
+
+            // Si c'est la course du jour ET qu'il est avant 12h52, on force le mode "En cours"
+            if (isTodayRace && currentMinutes < TIME_REVEAL) {
+                result = 'En cours';
+            } else {
+                // Sinon, on a le droit d'afficher les résultats !
+                if (m.marble_number === m.marble_races.winner_1) { result = 'Gagné'; gain = 500; }
+                else if (m.marble_number === m.marble_races.winner_2) { result = 'Gagné'; gain = 200; }
+                else if (m.marble_number === m.marble_races.winner_3) { result = 'Gagné'; gain = 100; }
+                else { result = 'Perdu'; gain = -50; }
+            }
           }
 
           allHistory.push({ 
-            id: `marble_${m.id}`, 
-            date: new Date(m.created_at), 
-            type: 'Course Chevaux', 
-            title: `Ticket N°${m.marble_number}`, 
-            result, 
-            amount: 50, 
-            gain 
+            id: `horse_${m.id}`, date: new Date(m.created_at), type: 'Course Chevaux', 
+            title: `Ticket N°${m.marble_number}`, result, amount: 50, gain 
           });
         });
       }
@@ -124,18 +121,12 @@ export default function Historique() {
             gain = result === 'Gagné' ? p.final_bet * 2 : -p.final_bet;
           }
           allHistory.push({ 
-            id: `pfc_${p.id}`, 
-            date: new Date(p.created_at), 
-            type: 'PFC 1v1', 
-            title: `Match en duel`, 
-            result, 
-            amount: myBetAmount, 
-            gain 
+            id: `pfc_${p.id}`, date: new Date(p.created_at), type: 'PFC 1v1', 
+            title: `Match en duel`, result, amount: myBetAmount, gain 
           });
         });
       }
 
-      // Tri chronologique
       allHistory.sort((a, b) => b.date.getTime() - a.date.getTime());
       setHistory(allHistory);
       setLoading(false);
@@ -191,10 +182,9 @@ export default function Historique() {
                   <h3 className="text-lg font-black text-slate-800">{item.title}</h3>
                   <p className="text-sm text-slate-500 font-bold mt-1">Mise : <span className="text-slate-700">{item.amount} 🪙</span></p>
                   
-                  {/* Affichage des détails pour les paris classiques */}
                   {item.type === 'Classique' && item.choice && (
-                    <p className="text-sm text-slate-500 font-bold mt-1">
-                      Choix : <span className="text-indigo-600">{item.choice}</span> (Cote : {item.odds})
+                    <p className="text-sm text-slate-500 font-bold mt-1 bg-slate-50 inline-block px-3 py-1 rounded-lg border border-slate-100">
+                      Choix : <span className="text-indigo-600">{item.choice}</span> <span className="text-slate-300 mx-1">|</span> Cote : <span className="text-pink-500">{item.odds}</span>
                     </p>
                   )}
                 </div>
