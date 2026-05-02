@@ -4,15 +4,17 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabase';
 
-// Définition de la structure commune pour un élément de l'historique
+// Mise à jour de la structure pour inclure le choix et la cote
 type HistoryItem = {
   id: string;
   date: Date;
-  type: 'Classique' | 'Course Billes' | 'PFC 1v1';
+  type: 'Classique' | 'Course Chevaux' | 'PFC 1v1';
   title: string;
   result: 'En cours' | 'Gagné' | 'Perdu' | 'Remboursé';
   amount: number;
   gain: number;
+  choice?: string;
+  odds?: number;
 };
 
 export default function Historique() {
@@ -32,25 +34,49 @@ export default function Historique() {
 
       let allHistory: HistoryItem[] = [];
 
-      // 1. Récupération des Paris Classiques
+      // 1. Récupération des Paris Classiques (On récupère aussi le titre du choix dans bet_options)
       const { data: classicBets } = await supabase
         .from('user_bets')
-        .select(`id, created_at, amount, option_id, locked_odds, bets!inner (title, status, winning_option_id)`)
+        .select(`
+          id, created_at, amount, option_id, locked_odds, 
+          bets!inner (title, status, winning_option_id),
+          bet_options (title)
+        `)
         .eq('user_id', userId);
 
       if (classicBets) {
         classicBets.forEach((b: any) => {
           let result: 'En cours' | 'Gagné' | 'Perdu' = 'En cours';
           let gain = 0;
+          
           if (b.bets.status === 'closed') {
             result = b.option_id === b.bets.winning_option_id ? 'Gagné' : 'Perdu';
             gain = result === 'Gagné' ? Math.floor(b.amount * (b.locked_odds || 2)) : -b.amount;
           }
-          allHistory.push({ id: `classic_${b.id}`, date: new Date(b.created_at), type: 'Classique', title: b.bets.title, result, amount: b.amount, gain });
+
+          // Extraction sécurisée du nom du choix
+          let choiceTitle = 'Inconnu';
+          if (b.bet_options && !Array.isArray(b.bet_options)) {
+            choiceTitle = b.bet_options.title;
+          } else if (Array.isArray(b.bet_options) && b.bet_options.length > 0) {
+            choiceTitle = b.bet_options[0].title;
+          }
+
+          allHistory.push({ 
+            id: `classic_${b.id}`, 
+            date: new Date(b.created_at), 
+            type: 'Classique', 
+            title: b.bets.title, 
+            result, 
+            amount: b.amount, 
+            gain,
+            choice: choiceTitle,
+            odds: b.locked_odds
+          });
         });
       }
 
-      // 2. Récupération des Courses de Billes
+      // 2. Récupération des Courses de Chevaux
       const { data: marbleBets } = await supabase
         .from('marble_bets')
         .select(`id, created_at, amount, marble_number, marble_races!inner (status, winner_1, winner_2, winner_3)`)
@@ -60,13 +86,24 @@ export default function Historique() {
         marbleBets.forEach((m: any) => {
           let result: 'En cours' | 'Gagné' | 'Perdu' = 'En cours';
           let gain = 0;
-          if (m.marble_races.status === 'closed') {
+          
+          // Sécurité : On vérifie que la course est finie ET qu'un gagnant est bien enregistré
+          if (m.marble_races.status === 'closed' && m.marble_races.winner_1 !== null) {
             if (m.marble_number === m.marble_races.winner_1) { result = 'Gagné'; gain = 500; }
             else if (m.marble_number === m.marble_races.winner_2) { result = 'Gagné'; gain = 200; }
             else if (m.marble_number === m.marble_races.winner_3) { result = 'Gagné'; gain = 100; }
             else { result = 'Perdu'; gain = -50; }
           }
-          allHistory.push({ id: `marble_${m.id}`, date: new Date(m.created_at), type: 'Course Billes', title: `Ticket N°${m.marble_number}`, result, amount: 50, gain });
+
+          allHistory.push({ 
+            id: `marble_${m.id}`, 
+            date: new Date(m.created_at), 
+            type: 'Course Chevaux', 
+            title: `Ticket N°${m.marble_number}`, 
+            result, 
+            amount: 50, 
+            gain 
+          });
         });
       }
 
@@ -80,18 +117,25 @@ export default function Historique() {
         pfcGames.forEach((p: any) => {
           let result: 'En cours' | 'Gagné' | 'Perdu' | 'Remboursé' = 'En cours';
           let gain = 0;
-          // La mise affichée dépend si la partie a vraiment commencé
           const myBetAmount = p.final_bet ? p.final_bet : (p.player1_id === userId ? p.bet_p1 : p.bet_p2);
           
           if (p.status === 'finished') {
             result = p.winner_id === userId ? 'Gagné' : 'Perdu';
             gain = result === 'Gagné' ? p.final_bet * 2 : -p.final_bet;
           }
-          allHistory.push({ id: `pfc_${p.id}`, date: new Date(p.created_at), type: 'PFC 1v1', title: `Match en duel`, result, amount: myBetAmount, gain });
+          allHistory.push({ 
+            id: `pfc_${p.id}`, 
+            date: new Date(p.created_at), 
+            type: 'PFC 1v1', 
+            title: `Match en duel`, 
+            result, 
+            amount: myBetAmount, 
+            gain 
+          });
         });
       }
 
-      // Tri chronologique (du plus récent au plus ancien)
+      // Tri chronologique
       allHistory.sort((a, b) => b.date.getTime() - a.date.getTime());
       setHistory(allHistory);
       setLoading(false);
@@ -102,7 +146,7 @@ export default function Historique() {
 
   const getTypeStyle = (type: string) => {
     if (type === 'Classique') return "bg-indigo-100 text-indigo-700 border-indigo-200";
-    if (type === 'Course Billes') return "bg-yellow-100 text-yellow-800 border-yellow-300";
+    if (type === 'Course Chevaux') return "bg-amber-100 text-amber-800 border-amber-300";
     if (type === 'PFC 1v1') return "bg-pink-100 text-pink-700 border-pink-200";
     return "bg-slate-100 text-slate-700";
   };
@@ -111,7 +155,7 @@ export default function Historique() {
     if (result === 'Gagné') return "text-emerald-600 bg-emerald-50 border-emerald-200";
     if (result === 'Perdu') return "text-red-500 bg-red-50 border-red-200";
     if (result === 'Remboursé') return "text-slate-500 bg-slate-100 border-slate-300";
-    return "text-amber-600 bg-amber-50 border-amber-200"; // En cours
+    return "text-amber-600 bg-amber-50 border-amber-200"; 
   };
 
   return (
@@ -146,6 +190,13 @@ export default function Historique() {
                   </div>
                   <h3 className="text-lg font-black text-slate-800">{item.title}</h3>
                   <p className="text-sm text-slate-500 font-bold mt-1">Mise : <span className="text-slate-700">{item.amount} 🪙</span></p>
+                  
+                  {/* Affichage des détails pour les paris classiques */}
+                  {item.type === 'Classique' && item.choice && (
+                    <p className="text-sm text-slate-500 font-bold mt-1">
+                      Choix : <span className="text-indigo-600">{item.choice}</span> (Cote : {item.odds})
+                    </p>
+                  )}
                 </div>
 
                 <div className={`px-4 py-2 rounded-xl border-2 font-black flex flex-col items-center justify-center min-w-[120px] ${getResultStyle(item.result)}`}>
